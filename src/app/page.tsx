@@ -1,6 +1,74 @@
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
+import { PokemonGrid, PokemonGridItem } from "../components/PokemonGrid";
+import { PokemonFilters } from "../components/PokemonFilters";
+import { Loader } from "../components/Loader";
+
+interface PokemonAPIResult {
+  name: string;
+  url: string;
+}
+
+interface PokemonType {
+  type: { name: string };
+}
+
+interface PokemonAPIData {
+  id: number;
+  name: string;
+  sprites: { other: { "official-artwork": { front_default: string } } };
+  types: PokemonType[];
+}
+
+const POKEMON_LIMIT = 151;
 
 export default function Home() {
+  const [pokemons, setPokemons] = useState<PokemonGridItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [types, setTypes] = useState<string[]>([]);
+  const [selectedType, setSelectedType] = useState("");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    async function fetchPokemons() {
+      setLoading(true);
+      const res = await fetch(`https://pokeapi.co/api/v2/pokemon?limit=${POKEMON_LIMIT}`);
+      const data = await res.json();
+      const results: PokemonAPIResult[] = data.results;
+      const pokemonData = await Promise.all(
+        results.map(async (pokemon) => {
+          const pokeRes = await fetch(pokemon.url);
+          const pokeData: PokemonAPIData = await pokeRes.json();
+          return {
+            name: pokeData.name,
+            image: pokeData.sprites.other["official-artwork"].front_default,
+            number: pokeData.id,
+            types: pokeData.types.map((t) => t.type.name),
+          };
+        })
+      );
+      setPokemons(pokemonData);
+      setLoading(false);
+    }
+    fetchPokemons();
+  }, []);
+
+  useEffect(() => {
+    async function fetchTypes() {
+      const res = await fetch("https://pokeapi.co/api/v2/type");
+      const data = await res.json();
+      const typeNames = data.results.map((t: { name: string }) => t.name).filter((t: string) => t !== "shadow" && t !== "unknown");
+      setTypes(typeNames);
+    }
+    fetchTypes();
+  }, []);
+
+  const filteredPokemons = pokemons.filter((pokemon) => {
+    const matchesType = selectedType ? pokemon.types.includes(selectedType) : true;
+    const matchesSearch = pokemon.name.toLowerCase().includes(search.toLowerCase());
+    return matchesType && matchesSearch;
+  });
+
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
@@ -98,6 +166,21 @@ export default function Home() {
           Go to nextjs.org →
         </a>
       </footer>
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold mb-6 text-center">Pokédex</h1>
+        <PokemonFilters
+          types={types}
+          selectedType={selectedType}
+          onTypeChange={setSelectedType}
+          search={search}
+          onSearchChange={setSearch}
+        />
+        {loading ? (
+          <Loader />
+        ) : (
+          <PokemonGrid pokemons={filteredPokemons} />
+        )}
+      </div>
     </div>
   );
 }
